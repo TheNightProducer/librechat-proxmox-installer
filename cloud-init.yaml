@@ -1,1 +1,38 @@
-1
+#cloud-config
+package_update: true
+packages:
+  - curl
+  - git
+
+runcmd:
+  - curl -fsSL https://get.docker.com | sh
+
+  - mkdir -p /opt/librechat
+  - cd /opt/librechat
+
+  - |
+    cat <<EOF > docker-compose.yml
+    version: "3.8"
+
+    services:
+      mongo:
+        image: mongo:7
+        restart: always
+        volumes:
+          - mongo_data:/data/db
+
+      librechat:
+        image: ghcr.io/danny-avila/librechat:latest
+        ports:
+          - "3080:3080"
+        environment:
+          - MONGO_URI=mongodb://mongo:27017/librechat
+        depends_on:
+          - mongo
+
+    volumes:
+      mongo_data:
+    EOF
+
+  - cd /opt/librechat
+  - docker compose up -d
