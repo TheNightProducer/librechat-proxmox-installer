@@ -1,31 +1,42 @@
 #!/usr/bin/env bash
 set -e
 
+echo "🚀 LibreChat Proxmox Installer startet..."
+
+# ----------------------------
+# STORAGE AUSWAHL
+# ----------------------------
+echo ""
+echo "📦 Verfügbare Storage:"
+pvesm status | awk 'NR>1 {print " - " $1}'
+echo ""
+
+read -rp "👉 Storage wählen (z.B. local-lvm) [local-lvm]: " STORAGE
+STORAGE=${STORAGE:-local-lvm}
+
+if ! pvesm status | awk '{print $1}' | grep -q "^$STORAGE$"; then
+  echo "❌ Storage '$STORAGE' existiert nicht!"
+  exit 1
+fi
+
+# ----------------------------
+# VM CONFIG
+# ----------------------------
 VMID=900
 VMNAME="librechat"
-STORAGE="local-lvm"
 BRIDGE="vmbr0"
 DISK="20G"
 RAM=6144
 CORES=4
 
-TEMPLATE="debian-12-cloud"
-
-echo "🚀 Checking Proxmox..."
-
-if ! command -v qm &>/dev/null; then
-  echo "❌ This script must run on Proxmox host"
-  exit 1
-fi
-
-echo "📦 Downloading Debian Cloud Image..."
+echo "📦 Lade Debian Cloud Image..."
 
 cd /var/lib/vz/template/cache
 
-wget -q -O debian-12.qcow2 \
+wget -q -O debian12.qcow2 \
 https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2
 
-echo "🖥 Creating VM..."
+echo "🖥 Erstelle VM..."
 
 qm create $VMID \
   --name $VMNAME \
@@ -36,7 +47,7 @@ qm create $VMID \
   --ostype l26 \
   --agent enabled=1
 
-qm importdisk $VMID debian-12.qcow2 $STORAGE
+qm importdisk $VMID debian12.qcow2 $STORAGE
 
 qm set $VMID \
   --scsi0 $STORAGE:vm-$VMID-disk-0 \
@@ -52,16 +63,16 @@ qm resize $VMID scsi0 +$DISK
 
 qm start $VMID
 
-echo "⏳ Waiting for VM boot..."
+echo "⏳ Warte auf VM..."
 sleep 60
 
 VMIP=$(qm guest cmd $VMID network-get-interfaces 2>/dev/null | grep -oP '(?<=ip-address": ")[0-9.]*' | head -1)
 
-echo "📦 Installing Docker + LibreChat..."
+echo "📦 Installiere Docker + LibreChat auf VM..."
 
 ssh -o StrictHostKeyChecking=no root@$VMIP << 'EOF'
 
-apt update && apt install -y curl git
+apt update && apt install -y curl
 
 curl -fsSL https://get.docker.com | sh
 
@@ -92,7 +103,10 @@ volumes:
 EOC
 
 docker compose up -d
+
 EOF
 
-echo "✅ DONE!"
-echo "🌐 LibreChat: http://$VMIP:3080"
+echo ""
+echo "✅ Installation fertig!"
+echo "🌐 LibreChat erreichbar unter:"
+echo "👉 http://$VMIP:3080"
